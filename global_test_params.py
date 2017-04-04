@@ -1,4 +1,4 @@
-CANT_EVALUATE = 0 # symbolic process execute successfully but cant evaluate resutl
+CANT_EVALUATE = 109 # symbolic process execute successfully but cant evaluate resutl
 ERR_EXECUTION = 1 # Error when executing symbolic
 PASS = 100
 FAIL = 101
