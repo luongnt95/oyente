@@ -654,6 +654,7 @@ def sym_exec_block(block, pre_block, visited, depth, stack, mem, memory, global_
 
 # Symbolically executing an instruction
 def sym_exec_ins(start, instr, stack, mem, memory, global_state, sha3_list, path_conditions_and_vars, local_problematic_pcs, analysis):
+    print global_state["pc"], instr
     global visited_pcs
     global solver
     global vertices
@@ -702,6 +703,7 @@ def sym_exec_ins(start, instr, stack, mem, memory, global_state, sha3_list, path
                 # both are real and we need to manually modulus with 2 ** 256
                 # if both are symbolic z3 takes care of modulus automatically
                 computed = (first + second) % (2 ** 256)
+            computed = simplify(computed) if is_expr(computed) else computed
             stack.insert(0, computed)
         else:
             raise ValueError('STACK underflow')
@@ -715,6 +717,7 @@ def sym_exec_ins(start, instr, stack, mem, memory, global_state, sha3_list, path
             elif isSymbolic(first) and isReal(second):
                 second = BitVecVal(second, 256)
             computed = first * second & UNSIGNED_BOUND_NUMBER
+            computed = simplify(computed) if is_expr(computed) else computed
             stack.insert(0, computed)
         else:
             raise ValueError('STACK underflow')
@@ -731,6 +734,7 @@ def sym_exec_ins(start, instr, stack, mem, memory, global_state, sha3_list, path
                 computed = first - second
             else:
                 computed = (first - second) % (2 ** 256)
+            computed = simplify(computed) if is_expr(computed) else computed
             stack.insert(0, computed)
         else:
             raise ValueError('STACK underflow')
@@ -751,11 +755,12 @@ def sym_exec_ins(start, instr, stack, mem, memory, global_state, sha3_list, path
                 second = to_symbolic(second)
                 solver.push()
                 solver.add( Not (second == 0) )
-                if solver.check() == unsat:
+                if check_solver() == unsat:
                     computed = 0
                 else:
                     computed = UDiv(first, second)
                 solver.pop()
+            computed = simplify(computed) if is_expr(computed) else computed
             stack.insert(0, computed)
         else:
             raise ValueError('STACK underflow')
@@ -779,17 +784,17 @@ def sym_exec_ins(start, instr, stack, mem, memory, global_state, sha3_list, path
                 second = to_symbolic(second)
                 solver.push()
                 solver.add(Not(second == 0))
-                if solver.check() == unsat:
+                if check_solver() == unsat:
                     computed = 0
                 else:
                     solver.push()
                     solver.add( Not( And(first == -2**255, second == -1 ) ))
-                    if solver.check() == unsat:
+                    if check_solver() == unsat:
                         computed = -2**255
                     else:
                         solver.push()
                         solver.add(first / second < 0)
-                        sign = -1 if solver.check() == sat else 1
+                        sign = -1 if check_solver() == sat else 1
                         z3_abs = lambda x: If(x >= 0, x, -x)
                         first = z3_abs(first)
                         second = z3_abs(second)
@@ -797,6 +802,7 @@ def sym_exec_ins(start, instr, stack, mem, memory, global_state, sha3_list, path
                         solver.pop()
                     solver.pop()
                 solver.pop()
+            computed = simplify(computed) if is_expr(computed) else computed
             stack.insert(0, computed)
         else:
             raise ValueError('STACK underflow')
@@ -819,13 +825,14 @@ def sym_exec_ins(start, instr, stack, mem, memory, global_state, sha3_list, path
 
                 solver.push()
                 solver.add(Not(second == 0))
-                if solver.check() == unsat:
+                if check_solver() == unsat:
                     # it is provable that second is indeed equal to zero
                     computed = 0
                 else:
                     computed = URem(first, second)
                 solver.pop()
 
+            computed = simplify(computed) if is_expr(computed) else computed
             stack.insert(0, computed)
         else:
             raise ValueError('STACK underflow')
@@ -848,14 +855,14 @@ def sym_exec_ins(start, instr, stack, mem, memory, global_state, sha3_list, path
 
                 solver.push()
                 solver.add(Not(second == 0))
-                if solver.check() == unsat:
+                if check_solver() == unsat:
                     # it is provable that second is indeed equal to zero
                     computed = 0
                 else:
 
                     solver.push()
                     solver.add(first < 0) # check sign of first element
-                    sign = BitVecVal(-1, 256) if solver.check() == sat \
+                    sign = BitVecVal(-1, 256) if check_solver() == sat \
                         else BitVecVal(1, 256)
                     solver.pop()
 
@@ -866,6 +873,7 @@ def sym_exec_ins(start, instr, stack, mem, memory, global_state, sha3_list, path
                     computed = sign * (first % second)
                 solver.pop()
 
+            computed = simplify(computed) if is_expr(computed) else computed
             stack.insert(0, computed)
         else:
             raise ValueError('STACK underflow')
@@ -886,7 +894,7 @@ def sym_exec_ins(start, instr, stack, mem, memory, global_state, sha3_list, path
                 second = to_symbolic(second)
                 solver.push()
                 solver.add( Not(third == 0) )
-                if solver.check() == unsat:
+                if check_solver() == unsat:
                     computed = 0
                 else:
                     first = ZeroExt(256, first)
@@ -895,6 +903,7 @@ def sym_exec_ins(start, instr, stack, mem, memory, global_state, sha3_list, path
                     computed = (first + second) % third
                     computed = Extract(255, 0, computed)
                 solver.pop()
+            computed = simplify(computed) if is_expr(computed) else computed
             stack.insert(0, computed)
         else:
             raise ValueError('STACK underflow')
@@ -915,7 +924,7 @@ def sym_exec_ins(start, instr, stack, mem, memory, global_state, sha3_list, path
                 second = to_symbolic(second)
                 solver.push()
                 solver.add( Not(third == 0) )
-                if solver.check() == unsat:
+                if check_solver() == unsat:
                     computed = 0
                 else:
                     first = ZeroExt(256, first)
@@ -924,6 +933,7 @@ def sym_exec_ins(start, instr, stack, mem, memory, global_state, sha3_list, path
                     computed = URem(first * second, third)
                     computed = Extract(255, 0, computed)
                 solver.pop()
+            computed = simplify(computed) if is_expr(computed) else computed
             stack.insert(0, computed)
         else:
             raise ValueError('STACK underflow')
@@ -940,6 +950,7 @@ def sym_exec_ins(start, instr, stack, mem, memory, global_state, sha3_list, path
                 # not supported in bit-vector theory
                 new_var_name = gen.gen_arbitrary_var()
                 computed = BitVec(new_var_name, 256)
+            computed = simplify(computed) if is_expr(computed) else computed
             stack.insert(0, computed)
         else:
             raise ValueError('STACK underflow')
@@ -962,18 +973,19 @@ def sym_exec_ins(start, instr, stack, mem, memory, global_state, sha3_list, path
                 second = to_symbolic(second)
                 solver.push()
                 solver.add( Not( Or(first >= 32, first < 0 ) ) )
-                if solver.check() == unsat:
+                if check_solver() == unsat:
                     computed = second
                 else:
                     signbit_index_from_right = 8 * first + 7
                     solver.push()
                     solver.add(second & (1 << signbit_index_from_right) == 0)
-                    if solver.check() == unsat:
+                    if check_solver() == unsat:
                         computed = second | (2 ** 256 - (1 << signbit_index_from_right))
                     else:
                         computed = second & ((1 << signbit_index_from_right) - 1)
                     solver.pop()
                 solver.pop()
+            computed = simplify(computed) if is_expr(computed) else computed
             stack.insert(0, computed)
         else:
             raise ValueError('STACK underflow')
@@ -989,12 +1001,13 @@ def sym_exec_ins(start, instr, stack, mem, memory, global_state, sha3_list, path
                 first = to_unsigned(first)
                 second = to_unsigned(second)
                 if first < second:
-                    stack.insert(0, 1)
+                    computed = 1
                 else:
-                    stack.insert(0, 0)
+                    computed = 0
             else:
-                sym_expression = If(ULT(first, second), BitVecVal(1, 256), BitVecVal(0, 256))
-                stack.insert(0, sym_expression)
+                computed = If(ULT(first, second), BitVecVal(1, 256), BitVecVal(0, 256))
+            computed = simplify(computed) if is_expr(computed) else computed
+            stack.insert(0, computed)
         else:
             raise ValueError('STACK underflow')
     elif instr_parts[0] == "GT":
@@ -1006,12 +1019,13 @@ def sym_exec_ins(start, instr, stack, mem, memory, global_state, sha3_list, path
                 first = to_unsigned(first)
                 second = to_unsigned(second)
                 if first > second:
-                    stack.insert(0, 1)
+                    computed = 1
                 else:
-                    stack.insert(0, 0)
+                    computed = 0
             else:
-                sym_expression = If(UGT(first, second), BitVecVal(1, 256), BitVecVal(0, 256))
-                stack.insert(0, sym_expression)
+                computed = If(UGT(first, second), BitVecVal(1, 256), BitVecVal(0, 256))
+            computed = simplify(computed) if is_expr(computed) else computed
+            stack.insert(0, computed)
         else:
             raise ValueError('STACK underflow')
     elif instr_parts[0] == "SLT":  # Not fully faithful to signed comparison
@@ -1023,12 +1037,13 @@ def sym_exec_ins(start, instr, stack, mem, memory, global_state, sha3_list, path
                 first = to_signed(first)
                 second = to_signed(second)
                 if first < second:
-                    stack.insert(0, 1)
+                    computed = 1
                 else:
-                    stack.insert(0, 0)
+                    computed = 0
             else:
-                sym_expression = If(first < second, BitVecVal(1, 256), BitVecVal(0, 256))
-                stack.insert(0, sym_expression)
+                computed = If(first < second, BitVecVal(1, 256), BitVecVal(0, 256))
+            computed = simplify(computed) if is_expr(computed) else computed
+            stack.insert(0, computed)
         else:
             raise ValueError('STACK underflow')
     elif instr_parts[0] == "SGT":  # Not fully faithful to signed comparison
@@ -1040,12 +1055,13 @@ def sym_exec_ins(start, instr, stack, mem, memory, global_state, sha3_list, path
                 first = to_signed(first)
                 second = to_signed(second)
                 if first > second:
-                    stack.insert(0, 1)
+                    computed = 1
                 else:
-                    stack.insert(0, 0)
+                    computed = 0
             else:
-                sym_expression = If(first > second, BitVecVal(1, 256), BitVecVal(0, 256))
-                stack.insert(0, sym_expression)
+                computed = If(first > second, BitVecVal(1, 256), BitVecVal(0, 256))
+            computed = simplify(computed) if is_expr(computed) else computed
+            stack.insert(0, computed)
         else:
             raise ValueError('STACK underflow')
     elif instr_parts[0] == "EQ":
@@ -1055,12 +1071,13 @@ def sym_exec_ins(start, instr, stack, mem, memory, global_state, sha3_list, path
             second = stack.pop(0)
             if isAllReal(first, second):
                 if first == second:
-                    stack.insert(0, 1)
+                    computed = 1
                 else:
-                    stack.insert(0, 0)
+                    computed = 0
             else:
-                sym_expression = If(first == second, BitVecVal(1, 256), BitVecVal(0, 256))
-                stack.insert(0, sym_expression)
+                computed = If(first == second, BitVecVal(1, 256), BitVecVal(0, 256))
+            computed = simplify(computed) if is_expr(computed) else computed
+            stack.insert(0, computed)
         else:
             raise ValueError('STACK underflow')
     elif instr_parts[0] == "ISZERO":
@@ -1072,12 +1089,13 @@ def sym_exec_ins(start, instr, stack, mem, memory, global_state, sha3_list, path
             first = stack.pop(0)
             if isReal(first):
                 if first == 0:
-                    stack.insert(0, 1)
+                    computed = 1
                 else:
-                    stack.insert(0, 0)
+                    computed = 0
             else:
-                sym_expression = If(first == 0, BitVecVal(1, 256), BitVecVal(0, 256))
-                stack.insert(0, sym_expression)
+                computed = If(first == 0, BitVecVal(1, 256), BitVecVal(0, 256))
+            computed = simplify(computed) if is_expr(computed) else computed
+            stack.insert(0, computed)
         else:
             raise ValueError('STACK underflow')
     elif instr_parts[0] == "AND":
@@ -1086,6 +1104,7 @@ def sym_exec_ins(start, instr, stack, mem, memory, global_state, sha3_list, path
             first = stack.pop(0)
             second = stack.pop(0)
             computed = first & second
+            computed = simplify(computed) if is_expr(computed) else computed
             stack.insert(0, computed)
         else:
             raise ValueError('STACK underflow')
@@ -1096,6 +1115,7 @@ def sym_exec_ins(start, instr, stack, mem, memory, global_state, sha3_list, path
             second = stack.pop(0)
 
             computed = first | second
+            computed = simplify(computed) if is_expr(computed) else computed
             stack.insert(0, computed)
 
         else:
@@ -1107,6 +1127,7 @@ def sym_exec_ins(start, instr, stack, mem, memory, global_state, sha3_list, path
             second = stack.pop(0)
 
             computed = first ^ second
+            computed = simplify(computed) if is_expr(computed) else computed
             stack.insert(0, computed)
 
         else:
@@ -1116,6 +1137,7 @@ def sym_exec_ins(start, instr, stack, mem, memory, global_state, sha3_list, path
             global_state["pc"] = global_state["pc"] + 1
             first = stack.pop(0)
             computed = (~first) & UNSIGNED_BOUND_NUMBER
+            computed = simplify(computed) if is_expr(computed) else computed
             stack.insert(0, computed)
         else:
             raise ValueError('STACK underflow')
@@ -1137,11 +1159,12 @@ def sym_exec_ins(start, instr, stack, mem, memory, global_state, sha3_list, path
                 second = to_symbolic(second)
                 solver.push()
                 solver.add( Not (Or( first >= 32, first < 0 ) ) )
-                if solver.check() == unsat:
+                if check_solver() == unsat:
                     computed = 0
                 else:
                     computed = second & (255 << (8 * byte_index))
                     computed = computed >> (8 * byte_index)
+            computed = simplify(computed) if is_expr(computed) else computed
             stack.insert(0, computed)
         else:
             raise ValueError('STACK underflow')
@@ -1300,7 +1323,7 @@ def sym_exec_ins(start, instr, stack, mem, memory, global_state, sha3_list, path
                 expression = current_miu_i < temp
                 solver.push()
                 solver.add(expression)
-                if solver.check() != unsat:
+                if check_solver() != unsat:
                     current_miu_i = If(expression, temp, current_miu_i)
                 solver.pop()
                 mem.clear() # very conservative
@@ -1361,7 +1384,7 @@ def sym_exec_ins(start, instr, stack, mem, memory, global_state, sha3_list, path
                 expression = current_miu_i < temp
                 solver.push()
                 solver.add(expression)
-                if solver.check() != unsat:
+                if check_solver() != unsat:
                     current_miu_i = If(expression, temp, current_miu_i)
                 solver.pop()
                 mem.clear() # very conservative
@@ -1428,7 +1451,7 @@ def sym_exec_ins(start, instr, stack, mem, memory, global_state, sha3_list, path
                 expression = current_miu_i < temp
                 solver.push()
                 solver.add(expression)
-                if solver.check() != unsat:
+                if check_solver() != unsat:
                     # this means that it is possibly that current_miu_i < temp
                     current_miu_i = If(expression,temp,current_miu_i)
                 solver.pop()
@@ -1479,7 +1502,7 @@ def sym_exec_ins(start, instr, stack, mem, memory, global_state, sha3_list, path
                 log.debug("Expression: " + str(expression))
                 solver.push()
                 solver.add(expression)
-                if solver.check() != unsat:
+                if check_solver() != unsat:
                     # this means that it is possibly that current_miu_i < temp
                     current_miu_i = If(expression,temp,current_miu_i)
                 solver.pop()
@@ -1509,7 +1532,7 @@ def sym_exec_ins(start, instr, stack, mem, memory, global_state, sha3_list, path
                 expression = current_miu_i < temp
                 solver.push()
                 solver.add(expression)
-                if solver.check() != unsat:
+                if check_solver() != unsat:
                     # this means that it is possibly that current_miu_i < temp
                     current_miu_i = If(expression,temp,current_miu_i)
                 solver.pop()
@@ -1689,7 +1712,7 @@ def sym_exec_ins(start, instr, stack, mem, memory, global_state, sha3_list, path
             solver.push()
             solver.add(is_enough_fund)
 
-            if solver.check() == unsat:
+            if check_solver() == unsat:
                 # this means not enough fund, thus the execution will result in exception
                 solver.pop()
                 stack.insert(0, 0)   # x = 0
@@ -1708,7 +1731,7 @@ def sym_exec_ins(start, instr, stack, mem, memory, global_state, sha3_list, path
                 boolean_expression = (recipient != address_is)
                 solver.push()
                 solver.add(boolean_expression)
-                if solver.check() == unsat:
+                if check_solver() == unsat:
                     solver.pop()
                     new_balance_is = (global_state["balance"]["Is"] + transfer_amount)
                     global_state["balance"]["Is"] = new_balance_is
@@ -1753,7 +1776,7 @@ def sym_exec_ins(start, instr, stack, mem, memory, global_state, sha3_list, path
             solver.push()
             solver.add(is_enough_fund)
 
-            if solver.check() == unsat:
+            if check_solver() == unsat:
                 # this means not enough fund, thus the execution will result in exception
                 solver.pop()
                 stack.insert(0, 0)   # x = 0
@@ -2055,6 +2078,14 @@ def detect_bugs():
     if global_params.WEB:
         results_for_web()
 
+def check_solver():
+    try:
+        ret = solver.check()
+    except Exception as e:
+        solver.pop()
+        raise e
+    return ret
+
 def closing_message():
     log.info("\t====== Analysis Completed ======")
     if global_params.STORE_RESULT:
@@ -2114,3 +2145,4 @@ def main(contract, contract_sol, _source_map = None):
 
 if __name__ == '__main__':
     main(sys.argv[1])
+
