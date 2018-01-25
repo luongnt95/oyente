@@ -3,8 +3,10 @@
 
 import requests
 import logging
+#  from web3 import Web3, HTTPProvider
 
 log = logging.getLogger(__name__)
+#  web3 = Web3(HTTPProvider('http://localhost:8545'))
 
 class EthereumData:
         def __init__(self, contract_address):
@@ -34,6 +36,16 @@ class EthereumData:
                 log.exception("Error at: contract address: %s" % address)
                 raise e
             return result
+
+        #  def getStorageAt(self, position):
+            #  position = hex(position)
+            #  if position[-1] == 'L': position = position[:-1]
+
+            #  try:
+                #  result = web3.eth.getStorageAt(self.contract_addr, position)
+            #  except:
+                #  raise
+            #  return int(result, 16)
 
         def getStorageAt(self, position):
             try:

@@ -164,6 +164,15 @@ def check_unit_test_file():
 def isTesting():
     return global_params.UNIT_TEST != 0
 
+def is_sender_address_valid():
+    if solver.check() == sat:
+        addr = solver.model()[BitVec('Is', 256)]
+        if addr != None:
+            addr = hex(addr.as_long()).rstrip('L')
+            if len(addr) == 42:
+                return True
+    return False
+
 # A simple function to compare the end stack with the expected stack
 # configurations specified in a test file
 def compare_stack_unit_test(stack):
@@ -768,16 +777,17 @@ def sym_exec_ins(params):
     if opcode == "INVALID":
         return
     elif opcode == "ASSERTFAIL":
-        if source_map:
-            source_code = source_map.get_source_code(global_state['pc'])
-            source_code = source_code.split("(")[0]
-            func_name = source_code.strip()
-            if func_name == "assert":
+        if global_params.CHECK_ASSERTIONS:
+            if source_map:
+                source_code = source_map.get_source_code(global_state['pc'])
+                source_code = source_code.split("(")[0]
+                func_name = source_code.strip()
+                if func_name == "assert":
+                    global_problematic_pcs["assertion_failure"].append(Assertion(global_state["pc"], models[-1]))
+                elif func_call != -1:
+                    global_problematic_pcs["assertion_failure"].append(Assertion(func_call, models[-1]))
+            else:
                 global_problematic_pcs["assertion_failure"].append(Assertion(global_state["pc"], models[-1]))
-            elif func_call != -1:
-                global_problematic_pcs["assertion_failure"].append(Assertion(func_call, models[-1]))
-        else:
-            global_problematic_pcs["assertion_failure"].append(Assertion(global_state["pc"], models[-1]))
         return
 
     # collecting the analysis result by calling this skeletal function
@@ -1935,6 +1945,11 @@ def sym_exec_ins(params):
                 else:
                     recipients.add(None)
 
+                pc = global_state['pc'] - 1
+                external_calls_covered.add(pc)
+                if not is_sender_address_valid():
+                    external_calls_callable_by_arbitrary_addrs.add(pc)
+
             transfer_amount = stack.pop(0)
             start_data_input = stack.pop(0)
             size_data_input = stack.pop(0)
@@ -1982,6 +1997,11 @@ def sym_exec_ins(params):
                 else:
                     recipients.add(None)
 
+                pc = global_state['pc'] - 1
+                external_calls_covered.add(pc)
+                if not is_sender_address_valid():
+                    external_calls_callable_by_arbitrary_addrs.add(pc)
+
             stack.pop(0)
             stack.pop(0)
             stack.pop(0)
@@ -2019,6 +2039,13 @@ def sym_exec_ins(params):
         new_balance = (old_balance + transfer_amount)
         global_state["balance"][new_address_name] = new_balance
         # TODO
+
+        if global_params.USE_GLOBAL_STORAGE:
+            pc = global_state['pc'] - 1
+            selfdestructs_covered.add(pc)
+            if not is_sender_address_valid():
+                selfdestructs_callable_by_arbitrary_addrs.add(pc)
+
         return
 
     else:
@@ -2355,6 +2382,10 @@ def handler(signum, frame):
 
 def get_recipients(disasm_file, contract_address):
     global recipients
+    global selfdestructs_callable_by_arbitrary_addrs
+    global selfdestructs_covered
+    global external_calls_callable_by_arbitrary_addrs
+    global external_calls_covered
     global data_source
     global source_map
     global c_name
@@ -2365,6 +2396,10 @@ def get_recipients(disasm_file, contract_address):
     c_name_sol = None
     data_source = EthereumData(contract_address)
     recipients = set()
+    selfdestructs_callable_by_arbitrary_addrs = set()
+    selfdestructs_covered = set()
+    external_calls_callable_by_arbitrary_addrs = set()
+    external_calls_covered = set()
 
     initGlobalVars()
     set_cur_file(c_name[4:] if len(c_name) > 5 else c_name)
@@ -2381,12 +2416,31 @@ def get_recipients(disasm_file, contract_address):
             timeout = True
         else:
             raise
+
     evm_code_coverage = float(len(visited_pcs)) / len(instructions.keys())
-    return {
+    with open(disasm_file, 'r') as f:
+        disasm = f.read()
+
+    num_selfdestructs = disasm.count('SUICIDE')
+    num_callcodes = disasm.count('CALLCODE')
+    num_delegatecalls = disasm.count('DELEGATECALL')
+
+    num_selfdestructs_not_covered = num_selfdestructs - len(selfdestructs_covered)
+    num_external_calls_not_covered = num_callcodes + num_delegatecalls - len(external_calls_covered)
+
+    ret = {
         'addrs': list(recipients),
         'evm_code_coverage': evm_code_coverage,
         'timeout': timeout
     }
+
+    if num_selfdestructs > 0 or num_delegatecalls > 0 or num_callcodes > 0:
+        ret['is_selfdestruct_callable_by_arbitrary_addr'] = len(selfdestructs_callable_by_arbitrary_addrs) != 0
+        ret['num_of_selfdestructs_not_covered'] = num_selfdestructs_not_covered
+        ret['is_external_call_callable_by_arbitrary_addr'] = len(external_calls_callable_by_arbitrary_addrs) != 0
+        ret['num_of_external_calls_not_covered'] = num_external_calls_not_covered
+
+    return ret
 
 def analyze(**kwargs):
     global c_name
